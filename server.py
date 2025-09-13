@@ -11,63 +11,157 @@ import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
+import pickle
 
 apiswitch = 0
 llmcontext = ""
 page_format = {
     "mode": 0,
     "model": 0,
-    "nutri": [0, 0, 0, 0, ""],
+    "nutri": [0, 0, 0, 0, "", ""],
     "state": 0,
     "ip": "",
     "tfidf": None,
     "corpus": ["weather", "news"],
     "vcr": None,
     "llmcontext": "",
-    "city": ""
+    "city": "",
+    "comban": 0,
+    "botban": 0
 }
 switch = 0
 model1 = joblib.load("crop_prediction.pkl")
+modi = pickle.load(open('classifier.pkl', 'rb'))
+
+fert = pickle.load(open('fertilizer.pkl', 'rb'))
+
+res = fert.classes_[modi.predict([[50, 0, 7, 76, 65, 65]])]
+print(res)
 df = pd.read_csv("state_month_avg_rainfall.csv")
 df = df.set_index("state_name")
 db = {}
-everyMod = [["REDIRECT_TO_MODEL1", 4], ["REDIRECT_TO_MODEL2", 5]]
+everyMod = [["REDIRECT_TO_MODEL1", 4], ["REDIRECT_TO_MODEL2", 6]]
 load_dotenv()
-OPENAI_API_KEY = [os.getenv("OPENAI_API_KEY"), os.getenv("OPENAI_API_KEY1")]
+OPENAI_API_KEY = [os.getenv("OPENROUTER_API_KEY")]
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # multilingual model
+OPENAI_MODEL = os.getenv("OPENROUTER_MODEL",
+                         "gpt-4o-mini")  # multilingual model
 chat_history = {}
 
 
 def predictmod(dbuid):
-    if dbuid["model"] == 0:
-        geocode = httpx.get("http://ip-api.com/json/" + dbuid["ip"])
-        dat = geocode.json()
-        print(dat)
-        state = dat["regionName"]
-        city = dat["city"]
-        monthno = datetime.now().month
-        rainfall = df.loc[state.replace(" ", "").lower(
-        ), str(monthno)] + df.loc[state.replace(" ", "").lower(
-        ), str((monthno + 1 - 1) % 12 +
-               1)] + df.loc[state.replace(" ", "").lower(),
-                            str((monthno + 2 - 1) % 12 +
-                                1)] + df.loc[state.replace(" ", "").lower(),
-                                             str((monthno + 3 - 1) % 12 + 1)]
-        weather = httpx.get(
-            "http://api.weatherapi.com/v1/current.json?key=00875ab90fb54517a57132130250309&q="
-            + city + "&aqi=no")
-        weatherdat = weather.json()
 
-        humidity = weatherdat["current"]["humidity"]
-        return model1.predict(
-            [[
-                dbuid["nutri"][0], dbuid["nutri"][1], dbuid["nutri"][2],
-                dbuid["nutri"][3], rainfall, humidity
-            ]]
-        )[0] + " is the best crop supporting your soil" or "No crop is suitable for your soil"
+    geocode = httpx.get("http://ip-api.com/json/" + dbuid["ip"])
+    dat = geocode.json()
+    print(dat)
+    state = dat["regionName"]
+    city = dat["city"]
+    monthno = datetime.now().month
+    rainfall = df.loc[state.replace(" ", "").lower(
+    ), str(monthno)] + df.loc[state.replace(" ", "").lower(
+    ), str((monthno + 1 - 1) % 12 +
+           1)] + df.loc[state.replace(" ", "").lower(),
+                        str((monthno + 2 - 1) % 12 +
+                            1)] + df.loc[state.replace(" ", "").lower(),
+                                         str((monthno + 3 - 1) % 12 + 1)]
+    weather = httpx.get(
+        "http://api.weatherapi.com/v1/current.json?key=00875ab90fb54517a57132130250309&q="
+        + city + "&aqi=no")
+    weatherdat = weather.json()
+
+    humidity = weatherdat["current"]["humidity"]
+    resp = model1.predict(
+        [[
+            dbuid["nutri"][0], dbuid["nutri"][1], dbuid["nutri"][2],
+            dbuid["nutri"][3], rainfall, humidity
+        ]]
+    )[0] + " is the best crop supporting your soil" or "No crop is suitable for your soil"
+    if dbuid["model"] == 0:
+        return resp
+
     if dbuid["model"] == 1:
-        return "Thank You for using our service"
+        match dbuid["nutri"][4]:
+            case "Black":
+                dbuid["nutri"][4] = 0
+            case "Clayey":
+                dbuid["nutri"][4] = 1
+            case "Loamy":
+                dbuid["nutri"][4] = 2
+            case "Red":
+                dbuid["nutri"][4] = 3
+            case "Sandy":
+                dbuid["nutri"][4] = 4
+            case _:
+                return "Invalid Soil Type"
+        crop = dbuid["nutri"][5]
+        match dbuid["nutri"][5]:
+            case "Barley":
+                dbuid["nutri"][5] = 0
+            case "Cotton":
+                dbuid["nutri"][5] = 1
+            case "Groundnuts":
+                dbuid["nutri"][5] = 2
+            case "Maize":
+                dbuid["nutri"][5] = 3
+            case "Millet":
+                dbuid["nutri"][5] = 4
+            case "Oil Seed":
+                dbuid["nutri"][5] = 5
+            case "Paddy":
+                dbuid["nutri"][5] = 6
+            case "Pulses":
+                dbuid["nutri"][5] = 7
+            case "Sugarcane":
+                dbuid["nutri"][5] = 8
+            case "Tobacco":
+                dbuid["nutri"][5] = 9
+            case "Wheat":
+                dbuid["nutri"][5] = 10
+            case "Cofee":
+                dbuid["nutri"][5] = 11
+            case "Rajma":
+                dbuid["nutri"][5] = 12
+            case "Orange":
+                dbuid["nutri"][5] = 13
+            case "Annardana":
+                dbuid["nutri"][5] = 14
+            case "Rice":
+                dbuid["nutri"][5] = 15
+            case "Watermellon":
+                dbuid["nutri"][5] = 16
+            case _:
+                return "Crop data yet not available"
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        print([
+            int(humidity),
+            int(dbuid["nutri"][4]),
+            int(dbuid["nutri"][5]),
+            int(dbuid["nutri"][0]),
+            int(dbuid["nutri"][2]),
+            int(dbuid["nutri"][1])
+        ])
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        print("\n")
+        resp += ". But if you want to grow " + crop + " you need to add " + fert.classes_[
+            modi.predict([[
+                int(humidity),
+                int(dbuid["nutri"][4]),
+                int(dbuid["nutri"][5]),
+                int(dbuid["nutri"][0]),
+                int(dbuid["nutri"][2]),
+                int(dbuid["nutri"][1])
+            ]])][0]
+
+        return resp
 
 
 def call_llm(user_message: str) -> str:
@@ -93,7 +187,7 @@ Text:<Your Respone Here(Dont use enter or line breaks)>
 Always provide options, Remember to start each option from a new line,
 or if you feel regardless of language if farmer is asking about which crop to plant
 then write only this REDIRECT_TO_MODEL1 only and nothing else
-or if you feel regadless of language if farmer wants to plant a specific crop
+or if you feel regadless of language if farmer wants to plant a specific crop or wants to know about fertilizer
 then write only this REDIRECT_TO_MODEL2 only and nothing else
 """
     system_prompt_sms = '''
@@ -102,12 +196,15 @@ then write only this REDIRECT_TO_MODEL2 only and nothing else
     '''
     try:
         headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY[apiswitch%2]}",
+            "Authorization":
+            f"Bearer {OPENAI_API_KEY[apiswitch%len(OPENAI_API_KEY)]}",
             "Content-Type": "application/json"
         }
-        print(OPENAI_API_KEY[apiswitch % 2])
+        print(OPENAI_API_KEY[apiswitch % len(OPENAI_API_KEY)])
         if switch == 1:
             system_prompt = system_prompt_sms
+        elif switch == 3:
+            system_prompt = "If you find any offensive , abusive language or untrue and balantly false fact or too good to be true things in the user message then print REDACTED only and nothing else otherwise print OK only"
 
         body = {
             "model":
@@ -123,7 +220,7 @@ then write only this REDIRECT_TO_MODEL2 only and nothing else
             0.2
         }
 
-        r = httpx.post("https://api.openai.com/v1/chat/completions",
+        r = httpx.post("https://openrouter.ai/api/v1/chat/completions",
                        headers=headers,
                        json=body,
                        timeout=30)
@@ -139,12 +236,87 @@ then write only this REDIRECT_TO_MODEL2 only and nothing else
 app = Flask(__name__)
 
 
+@app.route("/<adminquery>", methods=["GET"])
+def admindata(adminquery):
+    if adminquery == "admindata":
+        temp = {}
+        tempparent = {}
+        for i, j in db.items():
+            for k, v in j.items():
+                if k != "tfidf" and k != "vcr":
+                    temp[k] = v
+                    print(v)
+            tempparent[i] = temp
+            temp = {}
+        return jsonify(tempparent)
+    elif adminquery == "comunitydata":
+        return jsonify(chat_history)
+
+
+@app.route("/banctl/<typeban>/<int:uid>", methods=["GET"])
+def ban(typeban, uid):
+    if uid not in db:
+        return jsonify({"error": "User not found"})
+    if typeban == "comban":
+        db[uid]["comban"] = 1
+    elif typeban == "botban":
+        db[uid]["botban"] = 1
+    elif typeban == "unban":
+        db[uid]["comban"] = 0
+        db[uid]["botban"] = 0
+    return jsonify({"success": "200"})
+
+
+@app.route("/soilhealth/<int:uid>", methods=["GET"])
+def soilhealth(uid):
+    if uid not in db:
+        return jsonify({
+            "Nitrogen": "New User",
+            "Phosphorus": "New User",
+            "Potasium": "New User",
+            "PH": "New User",
+            "Soil Type": "New User"
+        })
+    return jsonify({
+        "Nitrogen": str(db[uid]["nutri"][0]),
+        "Phosphorus": str(db[uid]["nutri"][1]),
+        "Potasium": str(db[uid]["nutri"][2]),
+        "PH": str(db[uid]["nutri"][3]),
+        "Soil Type": str(db[uid]["nutri"][4])
+    })
+
+
 #------------------------------------------------------------------------------
+reportedMessages = []
+
+
+@app.route("/setChatHistory/<city>/<uid>/<int:indexno>", methods=["POST"])
+def setChatHistory(city, uid, indexno):
+    global chat_history
+    chat_history[city][int(indexno)] = request.json["message"]
+    return jsonify({"success": "200"})
+
+
+@app.route("/reports", methods=["GET"])
+def reports():
+    return jsonify(reportedMessages)
+
+
 @app.route("/alert/send/<int:uid>", methods=["GET"])
 def alert(uid):
+    global reportedMessages
+    global switch
+
+    print(request.json)
     global db
     if uid not in db:
         db[uid] = copy.deepcopy(page_format)
+    if db[uid]["comban"] == 1:
+        return jsonify([{
+            "name": "Admin",
+            "message": "You are banned for violating our Community Guidelines",
+            "uid": 100
+        }])
     if db[uid]["city"] == "":
 
         db[uid]["ip"] = request.headers.get("X-Forwarded-For").split(",")[0]
@@ -156,6 +328,15 @@ def alert(uid):
     if db[uid]["city"] not in chat_history:
         chat_history[db[uid]["city"]] = []
     if data["message"] != "10001":
+        switch = 3
+        if "REDACT" in call_llm(data["message"]):
+            reportedMessages.append([
+                data["name"], data["message"], uid,
+                len(chat_history[db[uid]["city"]]), db[uid]["city"]
+            ])
+            data[
+                "message"] = "Admin Message: This message was redacted for potential violation of our Community Guidelines. If you think this is a mistake, please contact us at 8799007739."
+
         chat_history[db[uid]["city"]].append(
             [data["name"], data["message"], uid])
     ret = []
@@ -186,8 +367,8 @@ def news():
 
         news["Headline" + str(
             0
-        )] = "Code Avengers also provide SMS based query service for basic phones/non smartphones. Try now by sending a sms to 8799007739."
-        news["Link" + str(0)] = "sms:8799007739"
+        )] = "You might be eligible for PM-KISAN scheme, providing ₹6,000 annually to eligible farmers."
+        news["Link" + str(0)] = "https://pmkisan.gov.in/homenew.aspx"
         for idx, headline in enumerate(headlines, 3):
             iteras = iteras + 1
             title = headline.get_text(strip=True)
@@ -214,6 +395,7 @@ def register():
 #-------------- MAIN LOGIC -------------------
 @app.route("/chat/<int:uid>", methods=["POST"])
 def add_user(uid):
+
     global page_format
     global everyMod
     global llmcontext
@@ -222,13 +404,25 @@ def add_user(uid):
 
     if uid not in db:
         db[uid] = copy.deepcopy(page_format)
+    if db[uid]["botban"] == 1:
+        dicti[
+            "AIreply"] = "You are banned for violating our Community Guidelines"
+        return jsonify(dicti)
 
 #question for other models
     query_string = [
         "Enter Nitrogen Quantity", "Enter Phosphorus Quantity",
         "Enter Potassium Quantity", "Enter PH of your soil",
-        "What do you want to grow?"
+        "What is your soil type?", "What do you want to grow?"
     ]
+    buttonsask = [[], [], [], [], ["Black", "Clayey", "Loamy", "Red", "Sandy"],
+                  [
+                      "Barley", "Cotton", "Groundnuts", "Maize", "Millet",
+                      "Oil Seed", "Paddy", "Pulses", "Sugarcane", "Tobacco",
+                      "Wheat", "Cofee", "Rajma", "Orange", "Annardana", "Rice",
+                      "Watermellon"
+                  ]]
+
     #------------------------------
 
     data = request.json
@@ -275,8 +469,17 @@ def add_user(uid):
 
     if db[uid]["mode"] == 102:
         try:
-
-            db[uid]["nutri"][db[uid]["state"]] = float(usrmess)
+            if (str(db[uid]["nutri"][db[uid]["state"]]).isnumeric() ==
+                    usrmess.isnumeric()):
+                db[uid]["nutri"][db[uid]["state"]] = float(usrmess)
+            else:
+                dicti["AIreply"] = "Invalid Input, Please start again"
+                db[uid]["state"] = page_format["state"]
+                # db[uid]["nutri"] = copy.deepcopy(page_format["nutri"])
+                db[uid]["state"] = page_format["state"]
+                db[uid]["mode"] = page_format["mode"]
+                db[uid]["model"] = page_format["model"]
+                return jsonify(dicti)
         except Exception:
 
             db[uid]["nutri"][db[uid]["state"]] = usrmess
@@ -287,12 +490,15 @@ def add_user(uid):
 
             dicti["AIreply"] = str(predictmod(db[uid]))
             db[uid]["state"] = page_format["state"]
-            db[uid]["nutri"] = copy.deepcopy(page_format["nutri"])
+            #  db[uid]["nutri"] = copy.deepcopy(page_format["nutri"])
             db[uid]["state"] = page_format["state"]
             db[uid]["mode"] = page_format["mode"]
             db[uid]["model"] = page_format["model"]
         else:
             dicti["AIreply"] = query_string[db[uid]["state"]]
+            for j, i in enumerate(buttonsask[db[uid]["state"]]):
+                dicti["Button" + str(j)] = i
+                print(i)
         return jsonify(dicti)
     if db[uid]["mode"] == 101 and usrmess == "OK":
         db[uid]["mode"] = 102
@@ -321,10 +527,10 @@ def add_user(uid):
     j = 0
     dicti["AIreply"] = reply[0].replace("Text:", "")
     for idx, i in enumerate(everyMod):
-        if dicti["AIreply"] == i[0]:
+        if i[0] in dicti["AIreply"]:
 
             db[uid]["mode"] = 101
-            db[uid]["model"] = 0
+            db[uid]["model"] = idx
             dicti["AIreply"] = "Please Enter Data as asked"
             dicti["Button1"] = "OK"
             dicti["Button2"] = "Cancel"
@@ -343,4 +549,3 @@ def add_user(uid):
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080)
-
