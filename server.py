@@ -112,6 +112,8 @@ class dynamicdb(UserDict):
         with open(f"{key}.dat", "rb") as file:
             temp = pickle.load(file)
             self[key] = temp
+            self[key]["tfidf"] = None
+            self[key]["vcr"] = None
             return self[key]
 
 
@@ -537,7 +539,7 @@ def add_user(uid):
     # MEMORY MEMORY MEMORY logic start
     if db[uid]["mode"] != 101 or db[uid]["mode"] != 102:
         if uid != 0:
-            if len(db[uid]["corpus"]) == 2:  #if new user
+            if db[uid]["vcr"] == None:  #if new user
                 vectorizer = TfidfVectorizer()
                 db[uid][
                     "llmcontext"] = "He is a new user greet him, say Namaste"
