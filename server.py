@@ -12,9 +12,8 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
 import pickle
+from collections import UserDict
 
-apiswitch = 0
-llmcontext = ""
 page_format = {
     "mode": 0,
     "model": 0,
@@ -29,6 +28,97 @@ page_format = {
     "comban": 0,
     "botban": 0
 }
+
+
+class dynamicdb(UserDict):
+    global page_format
+
+    def __init__(self, *args, mode="dict", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mode = mode
+        self.keyslastacc = []
+        self.keyslist = []
+        self.lenallowed = -1
+
+    def __getitem__(self, key):
+        try:
+            ind = self.keyslist.index(key)
+            self.keyslastacc[ind] = time.time() * 1000
+        except Exception:
+            print("Error: ", key)
+        print("Cache List: ",self.keyslist)
+        print("Cache Last Acc Time: ",self.keyslastacc)
+        temp = {}
+        if self.mode == "list":
+            super().__getitem__(key)
+            with open(f"{key}.dat", "wb") as file:
+                pickle.dump(super().__getitem__(key), file)
+            return super().__getitem__(key)
+        for k, v in super().__getitem__(key).items():
+            if k != "tfidf" and k != "vcr":
+                temp[k] = v
+        with open(f"{key}.dat", "wb") as file:
+            pickle.dump(temp, file)
+        return super().__getitem__(key)
+
+    def __contains__(self, key):
+        return os.path.exists(f"{key}.dat")
+
+    def __setitem__(self, key, value):
+        if key not in self.keyslist:
+            if self.lenallowed < 10:
+                self.lenallowed = self.lenallowed + 1
+                print("Adding: ", key)
+                self.keyslist.append(key)
+                self.keyslastacc.append(time.time() * 1000)
+            else:
+                ind = self.keyslastacc.index(min(self.keyslastacc))
+                print("--------------------------------------------------")
+                print("Deleting: ", self.keyslist[ind])
+                print("--------------------------------------------------")
+                updt = self[self.keyslist[ind]]
+                del self[self.keyslist[ind]]
+                self.keyslastacc[ind] = time.time() * 1000
+                self.keyslist[ind] = key
+        super().__setitem__(key, value)
+
+    def __missing__(self, key):
+        print("Missing: ", key)
+        if key not in self.keyslist:
+            if self.lenallowed < 10:
+                self.lenallowed = self.lenallowed + 1
+                print("Adding: ", key)
+                self.keyslist.append(key)
+                self.keyslastacc.append(time.time() * 1000)
+            else:
+                ind = self.keyslastacc.index(min(self.keyslastacc))
+                print("--------------------------------------------------")
+                print("Deleting: ", self.keyslist[ind])
+                updt = self[self.keyslist[ind]]
+                print("--------------------------------------------------")
+                del self[self.keyslist[ind]]
+
+                self.keyslastacc[ind] = time.time() * 1000
+                self.keyslist[ind] = key
+
+        if not os.path.exists(f"{key}.dat"):
+            if self.mode == "list":
+                self[key] = []
+            else:
+                self[key] = copy.deepcopy(page_format)
+            return self[key]
+        print(f"Querying {key} from dat file")
+
+        with open(f"{key}.dat", "rb") as file:
+            temp = pickle.load(file)
+            self[key] = temp
+            return self[key]
+
+
+combanulist = []
+apiswitch = 0
+llmcontext = ""
+
 switch = 0
 model1 = joblib.load("crop_prediction.pkl")
 modi = pickle.load(open('classifier.pkl', 'rb'))
@@ -39,14 +129,14 @@ res = fert.classes_[modi.predict([[50, 0, 7, 76, 65, 65]])]
 print(res)
 df = pd.read_csv("state_month_avg_rainfall.csv")
 df = df.set_index("state_name")
-db = {}
+db = dynamicdb({})
 everyMod = [["REDIRECT_TO_MODEL1", 4], ["REDIRECT_TO_MODEL2", 6]]
 load_dotenv()
 OPENAI_API_KEY = [os.getenv("OPENROUTER_API_KEY")]
 
 OPENAI_MODEL = os.getenv("OPENROUTER_MODEL",
                          "gpt-4o-mini")  # multilingual model
-chat_history = {}
+chat_history = dynamicdb({}, mode="list")
 
 
 def predictmod(dbuid):
@@ -238,6 +328,7 @@ app = Flask(__name__)
 
 @app.route("/<adminquery>", methods=["GET"])
 def admindata(adminquery):
+    global combanulist
     if adminquery == "admindata":
         temp = {}
         tempparent = {}
@@ -250,20 +341,27 @@ def admindata(adminquery):
             temp = {}
         return jsonify(tempparent)
     elif adminquery == "comunitydata":
-        return jsonify(chat_history)
+        return jsonify({
+            "history": dict(chat_history),
+            "banned_users": combanulist
+        })
 
 
 @app.route("/banctl/<typeban>/<int:uid>", methods=["GET"])
 def ban(typeban, uid):
+    global combanulist
     if uid not in db:
         return jsonify({"error": "User not found"})
+
     if typeban == "comban":
         db[uid]["comban"] = 1
+        combanulist.append(uid)
     elif typeban == "botban":
         db[uid]["botban"] = 1
     elif typeban == "unban":
         db[uid]["comban"] = 0
         db[uid]["botban"] = 0
+    updt = db[uid]
     return jsonify({"success": "200"})
 
 
@@ -293,7 +391,9 @@ reportedMessages = []
 @app.route("/setChatHistory/<city>/<uid>/<int:indexno>", methods=["POST"])
 def setChatHistory(city, uid, indexno):
     global chat_history
+    print(request.json)
     chat_history[city][int(indexno)] = request.json["message"]
+    reportedMessages[request.json["rindex"]] = None
     return jsonify({"success": "200"})
 
 
@@ -335,10 +435,12 @@ def alert(uid):
                 len(chat_history[db[uid]["city"]]), db[uid]["city"]
             ])
             data[
-                "message"] = "Admin Message: This message was redacted for potential violation of our Community Guidelines. If you think this is a mistake, please contact us at 8799007739."
-
-        chat_history[db[uid]["city"]].append(
-            [data["name"], data["message"], uid])
+                "message"] = f"Admin Message: Beware {data['name']}, You can be Banned !!! Your latest message was redacted for potential violation of our Community Guidelines. If you think this is a mistake, please contact us at 8799007739."
+            chat_history[db[uid]["city"]].append(
+                ["Admin", data["message"], 100])
+        else:
+            chat_history[db[uid]["city"]].append(
+                [data["name"], data["message"], uid])
     ret = []
     print(db[uid]["city"])
     for idx, element in enumerate(chat_history[db[uid]["city"]]):
